@@ -1,0 +1,22 @@
+{
+  "targetVmaf": 95,
+  "heightList": [1080],
+  "codecs": [
+    "libx264",
+    "libx265",
+    "libvpx-vp9",
+    "libaom-av1"
+  ],
+  "modes": [
+    "baseline_crf",
+    "per_title",
+    "per_scene",
+    "ai_preprocess+per_scene"
+  ],
+  "probeBitratesKbps": [600, 800, 1000, 1500, 2500],
+  "gopSec": 2,
+  "sceneThresh": 0.35,
+  "audioKbps": 128,
+  "vmafModel": "vmaf_v0.6.1.json",
+  "aiPreprocessModel": "realesrgan_x4plus"
+}
