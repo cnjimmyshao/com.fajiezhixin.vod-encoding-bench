@@ -7,6 +7,10 @@
     "libvpx-vp9",
     "libaom-av1"
   ],
+  "encoderImplementations": [
+    "cpu",
+    "nvenc"
+  ],
   "modes": [
     "baseline_crf",
     "per_title",
