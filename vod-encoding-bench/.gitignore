@@ -1,0 +1,9 @@
+workdir/
+results/*.mp4
+results/*.mkv
+results/*.webm
+results/*.json
+__pycache__/
+*.log
+*.tmp
+*.DS_Store
