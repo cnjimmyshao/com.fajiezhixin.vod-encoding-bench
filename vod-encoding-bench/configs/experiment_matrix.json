@@ -7,6 +7,10 @@
     "libvpx-vp9",
     "libaom-av1"
   ],
+  "encoderImplementations": [
+    "cpu",
+    "nvenc"
+  ],
   "modes": [
     "baseline_crf",
     "per_title",
@@ -17,5 +21,6 @@
   "gopSec": 2,
   "sceneThresh": 0.35,
   "audioKbps": 128,
-  "vmafModel": "vmaf_v0.6.1.json"
+  "vmafModel": "vmaf_v0.6.1.json",
+  "aiPreprocessModel": "realesrgan_x4plus"
 }
