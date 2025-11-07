@@ -14,7 +14,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,7 +31,6 @@ function sh(cmd, description) {
   try {
     const output = execSync(cmd, { 
       stdio: "pipe", 
-      shell: "/bin/bash",
       encoding: "utf8"
     });
     console.log(`[成功 / Success] ${description}`);
@@ -63,13 +62,14 @@ function generateTestVideo() {
   // 检查 ffmpeg 是否可用
   // Check if ffmpeg is available
   try {
-    execSync("which ffmpeg", { stdio: "pipe" });
+    const whichCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg';
+    execSync(whichCmd, { stdio: "pipe" });
   } catch (error) {
     console.warn(`[警告 / Warning] ffmpeg 未安装，跳过视频生成测试`);
     console.warn(`[Warning] ffmpeg not installed, skipping video generation test`);
     // 创建一个占位文件用于后续测试
     // Create a placeholder file for subsequent tests
-    execSync(`touch "${testVideo}"`, { shell: "/bin/bash" });
+    writeFileSync(testVideo, "");
     return testVideo;
   }
   
@@ -118,7 +118,8 @@ function testPerSceneEncode(inputVideo) {
   // 检查 ffmpeg 是否可用
   // Check if ffmpeg is available
   try {
-    execSync("which ffmpeg", { stdio: "pipe" });
+    const whichCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg';
+    execSync(whichCmd, { stdio: "pipe" });
   } catch (error) {
     console.warn(`[警告 / Warning] ffmpeg 未安装，跳过编码测试`);
     console.warn(`[Warning] ffmpeg not installed, skipping encoding test`);
@@ -146,7 +147,7 @@ const result = runPerSceneEncode({
   ],
   gopSec: 2,
   audioKbps: 128,
-  workdir: "${join(testWorkdir, "encode_test")}",
+  workdir: "${join(testWorkdir, "encode_test").replace(/\\/g, "/")}",
   vmafModel: "vmaf_v0.6.1.json",
   modeTag: "smokeTest"
 });
@@ -158,7 +159,7 @@ console.log(JSON.stringify({
 `;
 
   const testScriptPath = join(testWorkdir, "test_encode.mjs");
-  execSync(`echo '${testScript}' > "${testScriptPath}"`, { shell: "/bin/bash" });
+  writeFileSync(testScriptPath, testScript, "utf8");
   
   try {
     const output = sh(
