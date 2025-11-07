@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { execSync } from "node:child_process";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import { detectScenes, buildSegments, getDurationSeconds } from "./scene_detect.mjs";
 import { decideBitrateForSegment } from "./bitrate_probe.mjs";
 import { runPerSceneEncode } from "./per_scene_encode.mjs";
@@ -32,6 +34,88 @@ function ensureDir(path) {
 
 function sanitizeTag(tag) {
   return tag.replace(/[^a-zA-Z0-9_]+/g, "_");
+}
+
+async function promptForInputFile() {
+  const rl = createInterface({ input, output });
+  try {
+    console.log(
+      bilingual(
+        "请选择输入视频来源:\n  1) 使用本地视频文件\n  2) 使用 FFmpeg 生成随机测试视频 (30 秒)",
+        "Select the input video source:\n  1) Use a local video file\n  2) Generate a random test video with FFmpeg (30 seconds)"
+      )
+    );
+
+    let choice = "";
+    while (choice !== "1" && choice !== "2") {
+      choice = (await rl.question(
+        bilingual("请输入选项 (1 或 2): ", "Enter your choice (1 or 2): ")
+      )).trim();
+      if (choice !== "1" && choice !== "2") {
+        console.log(bilingual("无效选项，请重试。", "Invalid choice, please try again."));
+      }
+    }
+
+    if (choice === "1") {
+      while (true) {
+        const answer = (await rl.question(
+          bilingual("请输入本地视频文件路径: ", "Enter the local video file path: ")
+        )).trim();
+        if (!answer) {
+          console.log(bilingual("路径不能为空。", "Path cannot be empty."));
+          continue;
+        }
+        const candidate = resolve(answer);
+        if (!existsSync(candidate)) {
+          console.log(
+            bilingual(`文件不存在: ${candidate}`, `File does not exist: ${candidate}`)
+          );
+          continue;
+        }
+        try {
+          const stats = statSync(candidate);
+          if (!stats.isFile()) {
+            console.log(
+              bilingual(`路径不是文件: ${candidate}`, `Path is not a file: ${candidate}`)
+            );
+            continue;
+          }
+        } catch (err) {
+          console.log(
+            bilingual(`无法访问文件: ${candidate}`, `Unable to access file: ${candidate}`)
+          );
+          continue;
+        }
+        return candidate;
+      }
+    }
+
+    const duration = 30;
+    const generatedDir = resolve("./workdir", "generated_inputs");
+    ensureDir(generatedDir);
+    const outputFile = join(generatedDir, `random_${Date.now()}.mp4`);
+    const seed = Date.now();
+    console.log(
+      bilingual(
+        `正在使用 FFmpeg 生成随机测试视频 (${duration} 秒)...`,
+        `Generating a random test video (${duration} seconds) with FFmpeg...`
+      )
+    );
+    const ffmpegCmd =
+      `ffmpeg -y -hide_banner -loglevel error -f lavfi -i "life=s=1280x720:mold=10:r=30:ratio=0.5:seed=${seed}" ` +
+      `-f lavfi -i "sine=frequency=1000:sample_rate=44100" -shortest -c:v libx264 -pix_fmt yuv420p ` +
+      `-c:a aac -b:a 128k -t ${duration} "${outputFile}"`;
+    sh(ffmpegCmd);
+    console.log(
+      bilingual(
+        `随机视频已生成: ${outputFile}`,
+        `Random video generated at: ${outputFile}`
+      )
+    );
+    return outputFile;
+  } finally {
+    rl.close();
+  }
 }
 
 function createSegmentFetcher(sceneThresh) {
@@ -66,16 +150,9 @@ function isImplementationSupported(codec, implementation) {
   return false;
 }
 
-function main() {
+async function main() {
   const inputArg = process.argv[2];
-  if (!inputArg) {
-    console.error(bilingual(
-      "用法: node ./scripts/run_experiment.mjs <输入视频文件>",
-      "Usage: node ./scripts/run_experiment.mjs <inputVideoFile>"
-    ));
-    process.exit(1);
-  }
-  const INPUT = resolve(inputArg);
+  const INPUT = inputArg ? resolve(inputArg) : await promptForInputFile();
 
   const cfg = JSON.parse(readFileSync("./configs/experiment_matrix.json", "utf8"));
   const {
@@ -217,4 +294,7 @@ function main() {
   ));
 }
 
-main();
+main().catch(err => {
+  console.error(err);
+  process.exit(1);
+});

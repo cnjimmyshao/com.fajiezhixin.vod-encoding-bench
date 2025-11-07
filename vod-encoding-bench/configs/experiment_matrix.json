@@ -1,6 +1,6 @@
 {
   "targetVmaf": 95,
-  "heightList": [1080],
+  "heightList": [1080, 720, 480, 360],
   "codecs": [
     "libx264",
     "libx265",
