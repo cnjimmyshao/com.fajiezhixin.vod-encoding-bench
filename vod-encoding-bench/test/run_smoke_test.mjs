@@ -128,11 +128,12 @@ function testPerSceneEncode(inputVideo) {
   
   // 导入 per_scene_encode 模块并运行简单测试
   // Import per_scene_encode module and run a simple test
+  const encodeWorkdir = join(testWorkdir, "encode_test");
   const testScript = `
 import { runPerSceneEncode } from "../scripts/per_scene_encode.mjs";
 
 const result = runPerSceneEncode({
-  inputFile: "${inputVideo}",
+  inputFile: ${JSON.stringify(inputVideo)},
   height: 480,
   codec: "libx264",
   implementation: "cpu",
@@ -147,7 +148,7 @@ const result = runPerSceneEncode({
   ],
   gopSec: 2,
   audioKbps: 128,
-  workdir: "${join(testWorkdir, "encode_test").replace(/\\/g, "/")}",
+  workdir: ${JSON.stringify(encodeWorkdir)},
   vmafModel: "vmaf_v0.6.1.json",
   modeTag: "smokeTest"
 });
