@@ -34,7 +34,7 @@ jobs:
     - name: Check FFmpeg version and capabilities
       run: |
         ffmpeg -version
-        ffmpeg -codecs 2>&1 | grep -E "libx264|libx265|libvpx|aom" || echo "Some codecs may not be available"
+        ffmpeg -codecs 2>&1 | grep -E "libx264|libx265|libvpx|libaom-av1" || echo "Some codecs may not be available"
         
     - name: Install dependencies
       working-directory: ./vod-encoding-bench
