@@ -6,6 +6,8 @@ function sh(cmd) {
   return execSync(cmd, { stdio: "pipe", shell: "/bin/bash" }).toString("utf8");
 }
 
+const SMOKE_TEST = process.env.VOD_BENCH_SMOKE_TEST === "1";
+
 function resolveVideoArgs({ codec, implementation, bitrateKbps, gopFrames }) {
   if (implementation === "cpu") {
     if (codec === "libx265") {
@@ -74,6 +76,11 @@ function exportFinalSegment({
     );
   }
 
+  if (SMOKE_TEST) {
+    writeFileSync(outPath, `smoke segment ${start}-${dur}\n`, "utf8");
+    return;
+  }
+
   sh(
     `ffmpeg -y -hide_banner -ss ${start} -t ${dur} -i "${inputFile}" ` +
     `-vf "scale=-2:${height}" ` +
@@ -86,6 +93,12 @@ function exportFinalSegment({
 function concatSegmentsToFile(segFiles, finalFile) {
   const listPath = finalFile + ".txt";
   const listContent = segFiles.map(f => `file '${f.replace(/'/g,"'\\''")}'`).join("\n");
+  if (SMOKE_TEST) {
+    writeFileSync(listPath, listContent, "utf8");
+    writeFileSync(finalFile, segFiles.map(f => `concat ${f}`).join("\n"), "utf8");
+    return;
+  }
+
   writeFileSync(listPath, listContent, "utf8");
 
   sh(
@@ -95,6 +108,11 @@ function concatSegmentsToFile(segFiles, finalFile) {
 }
 
 function makeReferenceWhole(inputFile, height, refFile) {
+  if (SMOKE_TEST) {
+    writeFileSync(refFile, `smoke reference ${height}\n`, "utf8");
+    return;
+  }
+
   sh(
     `ffmpeg -y -hide_banner -i "${inputFile}" ` +
     `-vf "scale=-2:${height}" ` +
@@ -104,6 +122,15 @@ function makeReferenceWhole(inputFile, height, refFile) {
 }
 
 function measureFinalVmaf({ finalFile, referenceFile, vmafModel, outJson }) {
+  if (SMOKE_TEST) {
+    writeFileSync(
+      outJson,
+      JSON.stringify({ global_metrics: { vmaf: 95 } }, null, 2),
+      "utf8"
+    );
+    return 95;
+  }
+
   sh(
     `ffmpeg -hide_banner -r 30 -i "${finalFile}" -r 30 -i "${referenceFile}" ` +
     `-lavfi "[0:v][1:v]libvmaf=model_path='${vmafModel}':log_fmt=json:log_path='${outJson}'" ` +

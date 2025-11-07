@@ -1,6 +1,20 @@
 import { execSync } from "node:child_process";
 
+const SMOKE_TEST = process.env.VOD_BENCH_SMOKE_TEST === "1";
+
 export function detectScenes(inputFile, sceneThresh) {
+  if (SMOKE_TEST) {
+    const total = getDurationSeconds(inputFile);
+    if (!Number.isFinite(total) || total <= 0) {
+      return [];
+    }
+    if (total <= 2) {
+      return [];
+    }
+    const mid = Math.min(total - 0.5, Math.max(0.5, total / 2));
+    return [mid];
+  }
+
   const cmd = `ffmpeg -hide_banner -i "${inputFile}" -filter:v "select='gt(scene,${sceneThresh})',showinfo" -an -f null - 2>&1`;
   const stderr = execSync(cmd, { stdio: "pipe", shell: "/bin/bash" }).toString("utf8");
   const cuts = [];
@@ -36,6 +50,29 @@ export function buildSegments(sceneCuts, totalDur, minDurSec = 4.0, maxDurSec = 
 }
 
 export function getDurationSeconds(inputFile) {
+  if (SMOKE_TEST) {
+    const override = process.env.VOD_BENCH_SMOKE_DURATION;
+    if (override) {
+      const num = parseFloat(override);
+      if (Number.isFinite(num) && num > 0) {
+        return num;
+      }
+    }
+    try {
+      const out = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "${inputFile}"`,
+        { stdio: "pipe" }
+      ).toString("utf8").trim();
+      const parsed = parseFloat(out);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    } catch (err) {
+      // Ignore and fall through to default stub value
+    }
+    return 4.0;
+  }
+
   const out = execSync(
     `ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "${inputFile}"`,
     { stdio: "pipe" }

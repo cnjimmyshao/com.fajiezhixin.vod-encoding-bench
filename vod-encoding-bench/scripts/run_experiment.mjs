@@ -5,6 +5,11 @@ import { detectScenes, buildSegments, getDurationSeconds } from "./scene_detect.
 import { decideBitrateForSegment } from "./bitrate_probe.mjs";
 import { runPerSceneEncode } from "./per_scene_encode.mjs";
 
+const CONFIG_PATH = process.env.VOD_BENCH_CONFIG || "./configs/experiment_matrix.json";
+const WORKDIR_ROOT = process.env.VOD_BENCH_WORKDIR || "./workdir";
+const RESULTS_ROOT = process.env.VOD_BENCH_RESULTS_DIR || "./results";
+const SMOKE_TEST = process.env.VOD_BENCH_SMOKE_TEST === "1";
+
 function sh(cmd) {
   return execSync(cmd, { stdio: "pipe", shell: "/bin/bash" }).toString("utf8");
 }
@@ -15,6 +20,13 @@ function bilingual(chinese, english) {
 
 function avgBitrateKbps(file) {
   const sizeBytes = statSync(file).size;
+  if (SMOKE_TEST) {
+    const durationOverride = process.env.VOD_BENCH_SMOKE_DURATION;
+    const durationSec = durationOverride ? parseFloat(durationOverride) : 4;
+    const safeDur = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 4;
+    const safeSize = sizeBytes > 0 ? sizeBytes : 1;
+    return (safeSize * 8) / 1000 / safeDur;
+  }
   const durationSec = parseFloat(
     execSync(
       `ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "${file}"`,
@@ -77,7 +89,7 @@ function main() {
   }
   const INPUT = resolve(inputArg);
 
-  const cfg = JSON.parse(readFileSync("./configs/experiment_matrix.json", "utf8"));
+  const cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   const {
     targetVmaf,
     heightList,
@@ -97,7 +109,7 @@ function main() {
     : ["cpu"];
 
   const baseName = basename(INPUT).replace(/\.[^.]+$/, "");
-  const rootWork = resolve("./workdir", baseName);
+  const rootWork = resolve(WORKDIR_ROOT, baseName);
   ensureDir(rootWork);
 
   const fetchSegments = createSegmentFetcher(sceneThresh);
@@ -208,8 +220,9 @@ function main() {
     }
   }
 
-  const summaryPath = join("./results", `${baseName}_summary.json`);
-  ensureDir("./results");
+  const resultsDir = resolve(RESULTS_ROOT);
+  const summaryPath = join(resultsDir, `${baseName}_summary.json`);
+  ensureDir(resultsDir);
   writeFileSync(summaryPath, JSON.stringify(summaryRows, null, 2), "utf8");
   console.log(bilingual(
     `摘要结果已写入: ${summaryPath}`,

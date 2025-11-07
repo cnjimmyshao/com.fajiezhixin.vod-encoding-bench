@@ -102,6 +102,25 @@ To compare NVENC, ensure hardware and drivers are installed and keep the `nvenc`
 目前 NVENC 流程支持 H.264 与 H.265 编码器；VP9 与 AV1 会自动回退到 CPU 实现。
 At present the NVENC workflow supports the H.264 and H.265 codecs; VP9 and AV1 automatically fall back to the CPU implementation.
 
+## 基础测试流水线
+运行 `npm test`（或 `pnpm test`/`yarn test`）即可触发内置的烟囱测试，确认核心脚本能够在精简模式下完成一轮流程。
+Running `npm test` (or `pnpm test`/`yarn test`) triggers the built-in smoke test to ensure the core scripts finish a full pass in a lightweight mode.
+
+测试默认使用 `ffmpeg` 生成一段 1.5 秒的随机视频。如果希望改用本地素材，可在运行前设置 `VOD_BENCH_TEST_INPUT=/path/to/video.mp4`。
+By default the test generates a 1.5-second random clip with `ffmpeg`. Set `VOD_BENCH_TEST_INPUT=/path/to/video.mp4` to reuse an existing asset instead.
+
+测试期间脚本会自动开启 `VOD_BENCH_SMOKE_TEST=1`，并把中间产物写入临时目录：
+During the test the scripts automatically enable `VOD_BENCH_SMOKE_TEST=1` and redirect artifacts to temporary folders:
+
+```
+VOD_BENCH_CONFIG=<temp config>
+VOD_BENCH_RESULTS_DIR=<temp results>
+VOD_BENCH_WORKDIR=<temp workdir>
+```
+
+这些环境变量同样适用于日常手动巡检，可快速验证编码脚本是否可用，而无需准备完整的 VMAF 模型或执行耗时的转码流程。
+You can reuse these environment variables for manual smoke checks to verify the scripts without downloading full VMAF models or running long encodes.
+
 ## 输出结果
 `workdir/<输入文件名>/`：按模式、编码器、实现方式划分的子目录，包含分段文件、最终拼接文件以及参考视频。
 `workdir/<input name>/`: Mode-, codec-, and implementation-specific subdirectories containing segments, final stitched videos, and reference encodes.

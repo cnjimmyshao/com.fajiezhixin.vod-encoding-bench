@@ -6,6 +6,8 @@ function sh(cmd) {
   return execSync(cmd, { stdio: "pipe", shell: "/bin/bash" }).toString("utf8");
 }
 
+const SMOKE_TEST = process.env.VOD_BENCH_SMOKE_TEST === "1";
+
 function encodeRefSegment({
   inputFile, start, dur, height, tmpDir
 }) {
@@ -127,6 +129,22 @@ export function decideBitrateForSegment({
   tmpDir, vmafModel,
   targetVmaf
 }) {
+  if (SMOKE_TEST) {
+    const bitrates = [...probeBitratesKbps];
+    if (bitrates.length === 0) {
+      throw new Error("probeBitratesKbps must contain at least one bitrate in smoke test mode");
+    }
+    const sorted = bitrates.sort((a, b) => a - b);
+    const chosen = sorted[0];
+    return {
+      chosenBitrateKbps: chosen,
+      estVmaf: targetVmaf,
+      start,
+      dur,
+      implementation
+    };
+  }
+
   const refFile = encodeRefSegment({ inputFile, start, dur, height, tmpDir });
 
   const candidates = [];
