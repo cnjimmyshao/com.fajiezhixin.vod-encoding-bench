@@ -109,6 +109,17 @@ At present the NVENC workflow supports the H.264 and H.265 codecs; VP9 and AV1 a
 `results/<输入文件名>_summary.json`：记录每种模式的最终 VMAF、估算平均码率、输出文件路径以及使用的编码器实现，便于后续分析或可视化。
 `results/<input name>_summary.json`: Summary JSON listing final VMAF, estimated average bitrate, output path, and the encoder implementation for later analysis or visualization.
 
+## AI 预处理脚本使用说明
+占位脚本 `ai_preprocess/preprocess_video.py` 在实际模型集成前，仍然会把输入视频直接复制到目标路径。
+
+* 基本用法：
+  ```bash
+  python3 ./ai_preprocess/preprocess_video.py --input ./source.mp4 --output ./enhanced.mp4 --model realesrgan_x4plus
+  ```
+* 如果输出路径的上级目录不存在，脚本会自动创建。
+* 若输入与输出路径相同，脚本会在保持原文件不变的前提下跳过复制，并给出提示。
+* 当输入文件缺失时，脚本会以中英文提示信息退出，便于快速定位问题。
+
 ## 测试
 运行基础烟雾测试以验证核心脚本：
 Run basic smoke tests to verify core scripts:
