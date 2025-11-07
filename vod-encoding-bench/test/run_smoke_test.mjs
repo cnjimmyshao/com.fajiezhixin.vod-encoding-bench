@@ -192,7 +192,7 @@ console.log(JSON.stringify({
   }
 }
 
-async function runTests() {
+function runTests() {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║   VOD Encoding Bench - 烟雾测试 / Smoke Test Suite        ║
