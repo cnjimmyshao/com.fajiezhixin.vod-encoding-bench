@@ -109,6 +109,26 @@ At present the NVENC workflow supports the H.264 and H.265 codecs; VP9 and AV1 a
 `results/<输入文件名>_summary.json`：记录每种模式的最终 VMAF、估算平均码率、输出文件路径以及使用的编码器实现，便于后续分析或可视化。
 `results/<input name>_summary.json`: Summary JSON listing final VMAF, estimated average bitrate, output path, and the encoder implementation for later analysis or visualization.
 
+## 测试
+运行基础烟雾测试以验证核心脚本：
+Run basic smoke tests to verify core scripts:
+
+```
+npm test
+```
+
+烟雾测试包含：
+Smoke tests include:
+1. 生成 10 帧测试视频。
+   Generate a 10-frame test video.
+2. 测试 `preprocess_video.py` 脚本（使用模拟参数）。
+   Test `preprocess_video.py` script with mock parameters.
+3. 测试 `per_scene_encode.mjs` 脚本（10 帧模式）。
+   Test `per_scene_encode.mjs` script in 10-frame mode.
+
+注意：测试需要安装 ffmpeg 与 libvmaf 支持。如未安装，编码测试将被跳过。
+Note: Tests require ffmpeg with libvmaf support. If not available, encoding tests will be skipped.
+
 ## 后续计划
 完成 `baseline_crf` 与 `per_title` 模式，实现与现有流程一致的双语输出。
 Implement the `baseline_crf` and `per_title` modes while keeping bilingual output consistent with the current workflow.

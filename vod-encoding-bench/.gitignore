@@ -1,4 +1,5 @@
 workdir/
+test/test_workdir/
 results/*.mp4
 results/*.mkv
 results/*.webm

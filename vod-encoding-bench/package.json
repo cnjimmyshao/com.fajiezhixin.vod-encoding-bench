@@ -4,7 +4,8 @@
   "type": "module",
   "description": "VOD encoding efficiency benchmark with Per-Scene, Per-Title, AI preprocessing, multi-codec, and VMAF@95 target.",
   "scripts": {
-    "experiment": "node ./scripts/run_experiment.mjs"
+    "experiment": "node ./scripts/run_experiment.mjs",
+    "test": "node ./test/run_smoke_test.mjs"
   },
   "dependencies": {}
 }
