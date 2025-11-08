@@ -1,0 +1,101 @@
+doctype html
+html(lang="zh-CN")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1")
+    title VOD 编码基准实验控制台
+    link(rel="stylesheet" href="/styles.css")
+  body
+    main
+      header
+        h1 VOD 编码实验控制台
+        p.subtitle 通过浏览器配置参数、启动实验，并实时查看每个组合的汇总结果。
+
+      section.card
+        h2 实验参数
+        form#experiment-form
+          .field
+            label(for="inputFile") 输入视频路径
+            input#inputFile(type="text" name="inputFile" placeholder="/path/to/video.mp4" required)
+            p.help 服务器可访问的绝对路径，或容器中的挂载路径。
+
+          .grid
+            .field
+              label(for="targetVmaf") 目标 VMAF
+              input#targetVmaf(type="number" name="targetVmaf" step="0.1")
+            .field
+              label(for="baselineCrf") Baseline CRF
+              input#baselineCrf(type="number" name="baselineCrf" step="1")
+            .field
+              label(for="gopSec") GOP 秒数
+              input#gopSec(type="number" name="gopSec" step="0.1")
+            .field
+              label(for="sceneThresh") 场景阈值
+              input#sceneThresh(type="number" name="sceneThresh" step="0.05" min="0" max="1")
+            .field
+              label(for="audioKbps") 音频码率 (kbps)
+              input#audioKbps(type="number" name="audioKbps" step="8")
+            .field
+              label(for="vmafModel") VMAF 模型
+              input#vmafModel(type="text" name="vmafModel")
+            .field
+              label(for="aiPreprocessModel") AI 预处理模型
+              input#aiPreprocessModel(type="text" name="aiPreprocessModel")
+
+          .field
+            label(for="heightList") 分辨率列表
+            input#heightList(type="text" name="heightList" placeholder="2160, 1440, 1080")
+            p.help 使用逗号分隔，单位为垂直分辨率像素。
+
+          .field
+            label(for="codecs") 编码器
+            input#codecs(type="text" name="codecs" placeholder="libx264, libx265, libvpx-vp9")
+
+          .field
+            label(for="implementations") 实现 (cpu/nvenc)
+            input#implementations(type="text" name="implementations" placeholder="cpu, nvenc")
+
+          .field
+            label(for="probeBitrates") 探测码率 (kbps)
+            input#probeBitrates(type="text" name="probeBitrates" placeholder="2000, 4000, 8000")
+
+          .field
+            label(for="modes") 运行模式
+            input#modes(type="text" name="modes" placeholder="per_scene, ai_preprocess+per_scene, baseline_crf")
+            p.help 可用模式包括 per_scene、ai_preprocess+per_scene、baseline_crf。
+
+          footer.form-actions
+            button#startButton(type="submit") 启动实验
+
+      section#statusCard.card(hidden)
+        h2 实验状态
+        .status-line
+          span.label 任务 ID
+          code#taskId
+        .status-line
+          span.label 当前状态
+          span#taskStatus
+        .status-line
+          span.label 结果文件
+          span#summaryPath -
+        div
+          h3 日志
+          ul#logList
+
+      section#resultsCard.card(hidden)
+        h2 实时汇总
+        .table-wrapper
+          table
+            thead
+              tr
+                th 模式
+                th 编码器
+                th 实现
+                th 分辨率
+                th 最终 VMAF
+                th 平均码率 (kbps)
+                th 编码效率 (x)
+                th 输出文件
+            tbody#resultsBody
+
+    script(type="module" src="/app.js")

@@ -2,10 +2,12 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  appendFileSync,
   statSync,
   existsSync,
 } from "node:fs";
 import { join, basename, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -18,28 +20,10 @@ import { decideBitrateForSegment } from "./bitrate_probe.mjs";
 import { runPerSceneEncode } from "./per_scene_encode.mjs";
 import { runBaselineCrfEncode } from "./baseline_crf_encode.mjs";
 
-/**
- * 执行 Shell 命令
- *
- * @param {string} cmd - 要执行的命令
- * @returns {string} 命令输出
- */
 function sh(cmd) {
   return execSync(cmd, { stdio: "pipe", shell: "/bin/bash" }).toString("utf8");
 }
 
-/**
- * 检测系统是否支持 NVENC 硬件编码
- *
- * 检查两个条件：
- * 1. 系统是否有 NVIDIA GPU（通过 nvidia-smi 命令）
- * 2. FFmpeg 是否支持 NVENC 编码器（h264_nvenc, hevc_nvenc, av1_nvenc）
- *
- * @returns {{supported: boolean, hasGpu: boolean, encoders: string[]}} 检测结果
- *   - supported: 是否支持 NVENC（GPU 和编码器都可用）
- *   - hasGpu: 是否检测到 NVIDIA GPU
- *   - encoders: 可用的 NVENC 编码器列表
- */
 function checkNvencSupport() {
   const result = {
     supported: false,
@@ -48,7 +32,6 @@ function checkNvencSupport() {
   };
 
   try {
-    // 1. 检测 NVIDIA GPU
     try {
       execSync("nvidia-smi", {
         stdio: "pipe",
@@ -59,10 +42,9 @@ function checkNvencSupport() {
       console.log("  ✓ 检测到 NVIDIA GPU");
     } catch (gpuError) {
       console.log("  ✗ 未检测到 NVIDIA GPU (nvidia-smi 不可用)");
-      return result; // GPU 不可用，直接返回
+      return result;
     }
 
-    // 2. 检测 FFmpeg NVENC 编码器支持
     const encoders = sh("ffmpeg -hide_banner -encoders 2>/dev/null");
     const nvencEncoders = [
       { name: "h264_nvenc", display: "H.264 NVENC" },
@@ -79,7 +61,6 @@ function checkNvencSupport() {
       }
     }
 
-    // 只要有任意一个 NVENC 编码器可用，就认为支持
     result.supported = result.hasGpu && result.encoders.length > 0;
 
     return result;
@@ -89,14 +70,6 @@ function checkNvencSupport() {
   }
 }
 
-/**
- * 计算视频文件的平均码率
- *
- * 通过文件大小和时长计算实际平均码率（kbps）。
- *
- * @param {string} file - 视频文件路径
- * @returns {number} 平均码率 (kbps)
- */
 function avgBitrateKbps(file) {
   const sizeBytes = statSync(file).size;
   const durationSec = parseFloat(
@@ -112,42 +85,51 @@ function avgBitrateKbps(file) {
   return kbps;
 }
 
-/**
- * 确保目录存在
- *
- * 递归创建目录（相当于 mkdir -p）。
- *
- * @param {string} path - 目录路径
- */
 function ensureDir(path) {
   mkdirSync(path, { recursive: true });
 }
 
-/**
- * 清理标签字符串
- *
- * 将标签中的非字母数字字符替换为下划线，用于生成安全的文件名。
- *
- * @param {string} tag - 原始标签
- * @returns {string} 清理后的标签
- *
- * @example
- * sanitizeTag('ai_preprocess+per_scene') // 返回: 'ai_preprocess_per_scene'
- */
 function sanitizeTag(tag) {
   return tag.replace(/[^a-zA-Z0-9_]+/g, "_");
 }
 
-/**
- * 提示用户选择输入视频源
- *
- * 交互式命令行界面，让用户选择：
- * 1. 使用本地视频文件
- * 2. 使用 FFmpeg 生成随机测试视频（30 秒）
- *
- * @returns {Promise<string>} 视频文件的绝对路径
- */
-async function promptForInputFile() {
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter((item) => item.length > 0);
+  }
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  const item = String(value);
+  return item.length > 0 ? [item] : [];
+}
+
+function normalizeNumericArray(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item));
+  }
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isFinite(item));
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? [num] : [];
+}
+
+export async function promptForInputFile() {
   const rl = createInterface({ input, output });
   try {
     console.log(
@@ -206,20 +188,6 @@ async function promptForInputFile() {
   }
 }
 
-/**
- * 创建场景片段获取器（带缓存）
- *
- * 返回一个函数，该函数对视频进行场景检测并构建片段列表。
- * 使用 Map 缓存结果，避免对同一文件重复检测。
- *
- * @param {number} sceneThresh - 场景切换阈值 (0.0-1.0)
- * @returns {Function} 片段获取函数，接受 sourceFile 参数，返回片段数组
- *
- * @example
- * const fetchSegments = createSegmentFetcher(0.4);
- * const segments = fetchSegments('./video.mp4');
- * // 返回: [{start: 0, dur: 5.2, end: 5.2}, ...]
- */
 function createSegmentFetcher(sceneThresh) {
   const cache = new Map();
   return function fetchSegments(sourceFile) {
@@ -236,58 +204,36 @@ function createSegmentFetcher(sceneThresh) {
   };
 }
 
-/**
- * 检查编码器实现是否受支持
- *
- * 判断指定的编码器和实现方式组合是否可用。
- * NVENC 支持 H.264、H.265 和 AV1（需要 RTX 40 系列或更新的 GPU）
- * VP9 仅支持 CPU（NVENC 不支持 VP9）
- *
- * @param {string} codec - 编码器名称 (libx264, libx265, libvpx-vp9, libaom-av1)
- * @param {string} implementation - 实现方式 ('cpu' 或 'nvenc')
- * @returns {boolean} true 表示支持，false 表示不支持
- */
 function isImplementationSupported(codec, implementation) {
   if (implementation === "cpu") {
     return true;
   }
   if (implementation === "nvenc") {
-    // NVENC 支持 H.264、H.265 和 AV1
     return codec === "libx264" || codec === "libx265" || codec === "libaom-av1";
   }
   return false;
 }
 
-/**
- * 主实验流程
- *
- * 运行视频编码基准测试的完整流程：
- * 1. 获取输入视频（从命令行参数或交互提示）
- * 2. 加载实验配置（experiment_matrix.json）
- * 3. 检测 NVENC 支持并过滤不可用的实现
- * 4. 对每个模式/编码器/实现/分辨率组合执行：
- *    - 场景检测和片段构建
- *    - 自适应码率探测
- *    - 按场景编码
- *    - VMAF 质量评估
- * 5. 生成摘要结果 JSON
- *
- * 支持的模式：
- * - 'per_scene': 直接按场景编码
- * - 'ai_preprocess+per_scene': AI 预处理后按场景编码
- *
- * 结果保存到 results/<输入名称>_summary.json
- *
- * @throws {Error} 任何步骤失败时抛出错误并退出
- */
-async function main() {
-  const inputArg = process.argv[2];
-  const INPUT = inputArg ? resolve(inputArg) : await promptForInputFile();
+export async function runExperiment({
+  inputFile,
+  configPath = "./configs/experiment_matrix.json",
+  configOverrides = {},
+  onSummaryRow,
+  onLog,
+} = {}) {
+  if (!inputFile) {
+    throw new Error("inputFile is required");
+  }
 
-  const cfg = JSON.parse(
-    readFileSync("./configs/experiment_matrix.json", "utf8")
-  );
-  const {
+  const INPUT = resolve(inputFile);
+  if (!existsSync(INPUT)) {
+    throw new Error(`输入文件不存在: ${INPUT}`);
+  }
+
+  const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+  const mergedConfig = { ...cfg, ...configOverrides };
+
+  let {
     targetVmaf,
     heightList,
     codecs,
@@ -300,9 +246,26 @@ async function main() {
     modes = ["per_scene"],
     aiPreprocessModel = "realesrgan_x4plus",
     baselineCrf = 23,
-  } = cfg;
+  } = mergedConfig;
 
-  // 检测 NVENC 支持
+  heightList = normalizeNumericArray(heightList);
+  codecs = normalizeStringArray(codecs);
+  encoderImplementations = normalizeStringArray(encoderImplementations);
+  probeBitratesKbps = normalizeNumericArray(probeBitratesKbps);
+  modes = normalizeStringArray(modes);
+
+  if (heightList.length === 0) {
+    throw new Error("heightList 配置为空");
+  }
+  if (codecs.length === 0) {
+    throw new Error("codecs 配置为空");
+  }
+  if (probeBitratesKbps.length === 0) {
+    throw new Error("probeBitratesKbps 配置为空");
+  }
+
+  onLog?.(`开始编码实验: ${INPUT}`);
+
   console.log("\n=== 检测 NVENC 硬件编码支持 ===");
   const nvencInfo = checkNvencSupport();
   if (!nvencInfo.supported && encoderImplementations.includes("nvenc")) {
@@ -314,16 +277,13 @@ async function main() {
     }
   } else if (nvencInfo.supported) {
     console.log(
-      `\n✓ NVENC 可用 (${
-        nvencInfo.encoders.length
-      } 个编码器: ${nvencInfo.encoders.join(", ")})`
+      `\n✓ NVENC 可用 (${nvencInfo.encoders.length} 个编码器: ${nvencInfo.encoders.join(", ")})`
     );
   }
   console.log("");
 
   const nvencSupported = nvencInfo.supported;
-
-  const implementations = Array.isArray(encoderImplementations)
+  const implementations = encoderImplementations.length
     ? encoderImplementations.filter(
         (impl) => impl === "cpu" || (impl === "nvenc" && nvencSupported)
       )
@@ -335,7 +295,18 @@ async function main() {
 
   const fetchSegments = createSegmentFetcher(sceneThresh);
   const summaryRows = [];
-  const modesToRun = Array.isArray(modes) ? modes : ["per_scene"];
+  const modesToRun = modes.length ? modes : ["per_scene"];
+
+  ensureDir("./results");
+  const summaryPath = join("./results", `${baseName}_summary.json`);
+  const summaryStreamPath = join("./results", `${baseName}_stream.jsonl`);
+  writeFileSync(summaryStreamPath, "", "utf8");
+
+  const recordSummaryRow = (row) => {
+    summaryRows.push(row);
+    appendFileSync(summaryStreamPath, `${JSON.stringify(row)}\n`, "utf8");
+    onSummaryRow?.(row);
+  };
 
   function runPerSceneFlow({ modeLabel, sourceFile }) {
     const segments = fetchSegments(sourceFile);
@@ -363,8 +334,6 @@ async function main() {
           ensureDir(tmpDir);
 
           try {
-            // 使用自适应码率搜索，在片段之间传递历史信息
-            // Use adaptive bitrate search with historical info between segments
             let previousResult = null;
             let totalProbeCount = 0;
             let totalProbeEncodeTime = 0;
@@ -386,8 +355,8 @@ async function main() {
                   tmpDir,
                   vmafModel,
                   targetVmaf,
-                  previousSegmentResult: previousResult, // 传递上一个片段的结果
-                  useAdaptiveSearch: true, // 启用自适应搜索
+                  previousSegmentResult: previousResult,
+                  useAdaptiveSearch: true,
                 });
 
                 totalProbeCount += result.probesUsed || 0;
@@ -406,8 +375,6 @@ async function main() {
                   } kbps (估算VMAF=${result.estVmaf.toFixed(2)})${probesInfo}`
                 );
 
-                // 保存当前结果供下一个片段使用
-                // Save current result for next segment
                 previousResult = result;
                 plan.push(result);
               } catch (segError) {
@@ -419,31 +386,29 @@ async function main() {
                 if (segError.signal) {
                   console.error(`       信号: ${segError.signal}`);
                 }
-                throw segError; // 重新抛出，让外层处理
+                throw segError;
               }
             }
 
-            const { finalFile, finalVmaf, finalEncodeTime } = runPerSceneEncode(
-              {
-                inputFile: sourceFile,
-                height,
-                codec,
-                implementation,
-                segmentPlan: plan,
-                gopSec,
-                audioKbps,
-                workdir: modeWorkdir,
-                vmafModel,
-                modeTag: `${safeMode}_${height}p_${codec}_${implementation}`,
-              }
-            );
+            const { finalFile, finalVmaf, finalEncodeTime } = runPerSceneEncode({
+              inputFile: sourceFile,
+              height,
+              codec,
+              implementation,
+              segmentPlan: plan,
+              gopSec,
+              audioKbps,
+              workdir: modeWorkdir,
+              vmafModel,
+              modeTag: `${safeMode}_${height}p_${codec}_${implementation}`,
+            });
 
             const kbps = avgBitrateKbps(finalFile);
             const videoDuration = getDurationSeconds(sourceFile);
             const totalEncodeTime = totalProbeEncodeTime + finalEncodeTime;
             const encodingEfficiency = totalEncodeTime / videoDuration;
 
-            summaryRows.push({
+            recordSummaryRow({
               mode: modeLabel,
               codec,
               height,
@@ -494,7 +459,6 @@ async function main() {
 
   for (const mode of modesToRun) {
     if (mode === "baseline_crf") {
-      // Baseline CRF 模式：固定 CRF 编码，无场景检测
       for (const height of heightList) {
         for (const codec of codecs) {
           for (const implementation of implementations) {
@@ -516,36 +480,34 @@ async function main() {
             ensureDir(modeWorkdir);
 
             try {
-              const { finalFile, finalVmaf, encodeTime } = runBaselineCrfEncode(
-                {
-                  inputFile: INPUT,
-                  height,
-                  codec,
-                  implementation,
-                  crf: baselineCrf,
-                  gopSec,
-                  audioKbps,
-                  workdir: modeWorkdir,
-                  vmafModel,
-                  modeTag: `baseline_crf_${height}p_${codec}_${implementation}`,
-                }
-              );
+              const { finalFile, finalVmaf, encodeTime } = runBaselineCrfEncode({
+                inputFile: INPUT,
+                height,
+                codec,
+                implementation,
+                crf: baselineCrf,
+                gopSec,
+                audioKbps,
+                workdir: modeWorkdir,
+                vmafModel,
+                modeTag: `baseline_crf_${height}p_${codec}_${implementation}`,
+              });
 
               const kbps = avgBitrateKbps(finalFile);
               const videoDuration = getDurationSeconds(INPUT);
               const encodingEfficiency = encodeTime / videoDuration;
 
-              summaryRows.push({
+              recordSummaryRow({
                 mode: "baseline_crf",
                 codec,
                 height,
                 implementation,
                 crf: baselineCrf,
-                targetVmaf: null, // CRF 模式不使用目标 VMAF
+                targetVmaf: null,
                 finalVmaf,
                 avgBitrateKbps: kbps,
-                probeCount: 0, // 无探测
-                finalEncodeCount: 1, // 单次编码
+                probeCount: 0,
+                finalEncodeCount: 1,
                 totalEncodeCount: 1,
                 probeEncodeTimeSeconds: 0,
                 finalEncodeTimeSeconds: Math.round(encodeTime * 100) / 100,
@@ -600,13 +562,36 @@ async function main() {
     }
   }
 
-  const summaryPath = join("./results", `${baseName}_summary.json`);
-  ensureDir("./results");
   writeFileSync(summaryPath, JSON.stringify(summaryRows, null, 2), "utf8");
   console.log(`摘要结果已写入: ${summaryPath}`);
+  onLog?.(`摘要结果已写入: ${summaryPath}`);
+
+  return {
+    inputFile: INPUT,
+    summaryPath,
+    summaryStreamPath,
+    summaryRows,
+    config: {
+      ...mergedConfig,
+      heightList,
+      codecs,
+      encoderImplementations,
+      probeBitratesKbps,
+      modes: modesToRun,
+    },
+  };
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function cliMain() {
+  const inputArg = process.argv[2];
+  const inputFile = inputArg ? resolve(inputArg) : await promptForInputFile();
+  await runExperiment({ inputFile });
+}
+
+const thisFile = fileURLToPath(import.meta.url);
+if (process.argv[1] === thisFile) {
+  cliMain().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

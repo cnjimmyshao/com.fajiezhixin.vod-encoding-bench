@@ -13,7 +13,6 @@ __pycache__/
 # Config Files #
 ###################
 config/
-configs/
 .env
 .env.local
 .env.*.local
