@@ -9,7 +9,7 @@
     "start": "node ./server/index.mjs"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "pug": "^3.0.2"
+    "express": "^5.1.0",
+    "pug": "^3.0.3"
   }
 }
