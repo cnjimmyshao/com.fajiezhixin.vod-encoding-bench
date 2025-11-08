@@ -5,7 +5,11 @@
   "description": "VOD encoding efficiency benchmark with Per-Scene, Per-Title, AI preprocessing, multi-codec, and VMAF@95 target.",
   "scripts": {
     "experiment": "node ./scripts/run_experiment.mjs",
-    "test": "node ./test/run_smoke_test.mjs"
+    "test": "node ./test/run_smoke_test.mjs",
+    "start": "node ./server/index.mjs"
   },
-  "dependencies": {}
+  "dependencies": {
+    "express": "^4.19.2",
+    "pug": "^3.0.2"
+  }
 }
